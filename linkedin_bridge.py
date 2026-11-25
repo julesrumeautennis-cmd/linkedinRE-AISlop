@@ -72,9 +72,21 @@ def post_card(ref):
     return post
 
 
+def provider_error(result):
+    if not result.is_error:
+        return None
+    # Keep diagnostic logs and session details on the local machine.
+    reason = " ".join(getattr(item, "text", "") for item in result.content).lower()
+    if "setup is not complete" in reason:
+        return "The local MCP browser is starting. Wait a moment, then sync again."
+    if "rate limit" in reason or "rate_limit" in reason:
+        return "LinkedIn has temporarily limited feed reads. Try again later."
+    if "login" in reason or "sign in" in reason or "authentication" in reason:
+        return "LinkedIn is asking for sign-in. Complete it in the local Chrome window."
+    return "The local MCP could not read the feed. Try syncing again."
+
+
 def data(result):
-    if result.is_error:
-        raise ValueError("The LinkedIn session needs attention. Open the local sign-in and retry.")
     if result.structured_content:
         return result.structured_content
     return json.loads(result.content[0].text)
@@ -83,17 +95,28 @@ def data(result):
 async def read():
     executable = Path(sys.executable).parent / "mcp-server-linkedin"
     args = ["--transport", "stdio", "--no-auto-import", "--user-data-dir", str(PROFILE)]
+    chrome = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+    if chrome.is_file():
+        args.extend(["--chrome-path", str(chrome)])
     client = StdioServerParameters(command=str(executable), args=args, cwd=str(PROFILE.parent))
     with open(os.devnull, "w") as logs:
         async with stdio_client(client, errlog=logs) as streams, ClientSession(*streams) as session:
             await session.initialize()
-            status = data(await session.call_tool("get_session_status", {}))
+            session_result = await session.call_tool("get_session_status", {})
+            error = provider_error(session_result)
+            if error:
+                return {"error":error}
+            status = data(session_result)
             if not status.get("session", {}).get("stored"):
                 return {"error":"Sign in to LinkedIn in the local MCP window, then sync again. To open it again, run the sign-in command in the README."}
-            response = data(await session.call_tool("get_feed", {"num_posts":10, "max_scrolls":2}))
+            feed_result = await session.call_tool("get_feed", {"num_posts":10})
+            error = provider_error(feed_result)
+            if error:
+                return {"error":error}
+            response = data(feed_result)
     refs = response.get("references", {}).get("feed", [])
     if not refs:
-        return {"error":"LinkedIn MCP returned no post links. Check your sign-in and try again."}
+        return {"error":"LinkedIn returned no post links on this sync. Your local session is saved."}
     cards = await asyncio.gather(*(asyncio.to_thread(post_card, ref) for ref in refs[:10]))
     unique = {}
     for card in cards:
@@ -108,4 +131,4 @@ if __name__ == "__main__":
     try:
         print(json.dumps(asyncio.run(read())))
     except Exception:
-        print(json.dumps({"error":"Could not read the home feed from LinkedIn MCP. Check the local sign-in and retry."}))
+        print(json.dumps({"error":"The local connector stopped before it could finish reading the feed. Open Offscript on this Mac and try syncing again."}))
