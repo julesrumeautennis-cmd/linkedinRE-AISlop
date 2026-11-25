@@ -1,5 +1,3 @@
-import {samples} from './samples.js';
-import {drawPrint} from './print.js';
 
 const $=selector=>document.querySelector(selector);
 const dbReady=new Promise((resolve,reject)=>{
@@ -15,7 +13,7 @@ async function localData(method,value){
     tx.oncomplete=()=>resolve(req.result);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
   });
 }
-const posts=samples.map(p=>({...p}));
+const posts=[];
 const expanded=new Set(), unfolded=new Set(), openVoices=new Set(), disclosures=new Set(), busy=new Set();
 const blobUrls=new Map();
 let filter=false, batch=false, state={state:'checking'}, timer, recordingCleanup=null;
@@ -65,18 +63,62 @@ $('#api-status').onclick=()=>{
 $('#method').onclick=()=>{
   const body=dialog('How Offscript works');
   for(const [head,copy] of [
-    ['Check the writing','Add at least 50 words. Offscript sends the post text to Pangram when you scan it. Your name, impressions and audio stay in this browser.'],
-    ['Filter the feed','Hide likely AI folds high-confidence AI results. Until scanned, posts whose authors disclose AI authorship can also be folded. Mixed and uncertain results stay visible. You can reopen any post.'],
-    ['Hear the original','Play the original recording when a contributor has attached one. For the Apollo 13 example, the audio is NASA’s 1970 mission recording.'],
-    ['Where the feed comes from','The starter feed contains three AI-written demonstrations and three historical excerpts. You can add your own posts and actual impression counts.']
+    ['Check the writing','Pangram analyzes the full original caption when you click Scan. Posts under 50 words remain unclassified.'],
+    ['Filter the feed','Hide AI detections folds posts flagged as AI by Pangram, including mixed posts with a confirmed AI detection. Uncertain results stay visible. You can reopen every post.'],
+    ['Read the source','Each public post links to its original on LinkedIn. Reactions and comments are a snapshot of the public counts at import.'],
+    ['Add a post','Save your own post, photo, original audio, and impression count to this browser. A scan sends the text to Pangram.']
   ])body.append(element('h3','',head),element('p','',copy));
 };
-drawPrint($('#print'));
-function scanText(p){return p.own?p.body:p.title+'\n\n'+p.body;}
-function longEnough(p){return scanText(p).trim().split(/\s+/).length>=50;}
-function eligible(p){return p.result?p.result.kind==='ai':Boolean(p.disclosed);}
-function tagFor(p){if(p.result)return [p.result.kind,labels[p.result.kind]];if(p.disclosed&&(!p.own||disclosures.has(p.id)))return ['disclosed','Disclosed AI'];if(p.archive)return ['archive','Archive'];return ['','Unscanned'];}
-function avatar(p){const a=element('span','avatar '+p.theme,p.mark);a.setAttribute('aria-hidden','true');return a;}
+
+function scanText(p){return p.linkedin?p.sourceHash:p.body;}
+function longEnough(p){return (p.linkedin?p.wordCount:p.body.trim().split(/\s+/).length)>=50;}
+function eligible(p){
+  if(!p.result)return Boolean(p.disclosed);
+  return p.result.kind==='ai'||(p.result.kind==='mixed'&&p.result.headline==='AI Detected');
+}
+function verdict(p){
+  const r=p.result;
+  if(r.source==='Pangram dashboard'){
+    if(r.kind==='uncertain')return r.headline;
+    if(r.kind==='mixed')return 'AI detected · Mixed';
+  }
+  return labels[r.kind];
+}
+function tagFor(p){if(p.result)return [p.result.kind,verdict(p)];if(p.disclosed&&(!p.own||disclosures.has(p.id)))return ['disclosed','Disclosed AI'];if(p.archive)return ['archive','Archive'];return ['','Unscanned'];}
+function avatar(p){
+  const a=element('span','avatar '+p.theme,p.mark);a.setAttribute('aria-hidden','true');
+  if(p.avatar){const img=element('img');img.alt='';img.src=p.avatar;img.referrerPolicy='no-referrer';img.onerror=()=>img.remove();a.append(img);}
+  return a;
+}
+function sourceLink(p,label){
+  const link=element('a','action',label);link.href=p.url;link.target='_blank';link.rel='noreferrer';return link;
+}
+function openGallery(p,index,photos){
+  const pane=dialog(p.photoAlt||'Post photo');const full=element('img','lightbox-image');
+  full.alt=p.photoAlt||'Attached photo';full.referrerPolicy='no-referrer';
+  const controls=element('div','gallery-controls'),position=element('span');
+  const previous=button('Previous','secondary',()=>show(index-1));
+  const next=button('Next','secondary',()=>show(index+1));
+  function show(i){index=i;full.src=photos[i];position.textContent=(i+1)+' / '+photos.length;previous.disabled=i===0;next.disabled=i===photos.length-1;}
+  controls.append(previous,position,next);pane.append(full);if(photos.length>1)pane.append(controls);if(p.linkedin)pane.append(sourceLink(p,'View on LinkedIn'));show(index);
+}
+function gallery(p){
+  let photos=p.photos||[];
+  if(p.photoFile){
+    const key='photo-'+p.id;
+    if(!blobUrls.has(key))blobUrls.set(key,URL.createObjectURL(p.photoFile));
+    photos=[blobUrls.get(key)];
+  }
+  const group=element('div','photo-grid photos-'+Math.min(photos.length,4));
+  photos.slice(0,4).forEach((url,i)=>{
+    const b=button('','photo-tile',()=>openGallery(p,i,photos));
+    b.setAttribute('aria-label','Open photo '+(i+1)+' of '+photos.length+' · '+(p.photoAlt||p.name));
+    const img=element('img');img.alt=(p.photoAlt||'Photo in the post')+(photos.length>1?' ('+(i+1)+')':'');
+    img.loading=p.featured?'eager':'lazy';img.referrerPolicy='no-referrer';img.src=url;
+    img.onerror=()=>{b.classList.add('photo-failed');if(p.linkedin)b.replaceWith(sourceLink(p,'View this photo on LinkedIn'));};
+    b.append(img);group.append(b);
+  });return group;
+}
 function repaintCard(p){
   const prior=document.getElementById('post-'+p.id);
   if(prior)prior.replaceWith(card(p));else $('#cards').prepend(card(p));
@@ -102,10 +144,11 @@ function activateVoice(p,scroll=false){
   box.querySelector('audio').play().catch(()=>toast('Press play to hear the original.'));
 }
 function detailsFor(p){
-  const body=dialog(labels[p.result.kind]||'Pangram result');body.append(element('p','',p.result.prediction||p.result.headline));
+  const body=dialog(verdict(p)||'Pangram result');body.append(element('p','',p.result.prediction||p.result.headline));
   const entries=Object.entries(p.result.shares||{}), names={ai:'AI-written',ai_assisted:'AI-assisted',human:'Human-written'};
   if(entries.length){body.append(element('h3','','Share of the text'));for(const [k,v] of entries)body.append(element('p','',names[k]+' · '+v+'%'));}
-  body.append(element('small','','Pangram '+p.result.version+' · Estimates of the submitted text.'));
+  if(p.result.range)body.append(element('p','','Pangram’s estimated range is '+p.result.range.join('–')+'% AI-written text.'));
+  body.append(element('small','',(p.result.source||'Pangram API')+' · Model '+p.result.version+(p.result.source?' · November 24, 2026':'')));
 }
 function card(p){
   const item=element('article','card');item.id='post-'+p.id;
@@ -116,21 +159,31 @@ function card(p){
     item.classList.add('folded');by.lastChild.textContent=(p.disclosed&&!p.result?'Author-disclosed AI':label)+' · Folded';
     top.append(button('Show post','linkish',()=>{unfolded.add(p.id);repaintCard(p);}));return item;
   }
-  top.append(element('span','tag '+type,label));
+  if(p.result||p.disclosed)top.append(element('span','tag '+type,label));
+  else if(p.featured)top.append(element('span','tag featured','Featured post'));
   if(p.own && p.impressions){
     const metric=element('div','reach');metric.append(element('strong','',Number(p.impressions).toLocaleString('en-US')),element('span','','impressions · reported by author'));item.append(metric);
   }
   if(p.title)item.append(element('h3','',p.title));
-  const text=element('p','post-body'+(expanded.has(p.id)?'':' clamp'),p.body);item.append(text);
-  if(p.body.length>190)item.append(button(expanded.has(p.id)?'Read less':'Read more','linkish',()=>{
+  const text=element('p','post-body'+(p.shortPreview||expanded.has(p.id)?'':' clamp'),p.body);item.append(text);
+  if(p.shortPreview)item.append(sourceLink(p,'…more on LinkedIn'));
+  else if(p.body.length>190)item.append(button(expanded.has(p.id)?'Read less':'Read more','linkish',()=>{
     if(expanded.has(p.id))expanded.delete(p.id);else expanded.add(p.id);repaintCard(p);
   }));
   if(p.own && p.disclosed && disclosures.has(p.id)){
     const quote=element('blockquote','disclosure','“I wrote this post with AI.”');quote.append(element('cite','','Author disclosure'));item.append(quote);
   }
+  if(p.photos?.length||p.photoFile)item.append(gallery(p));
+  if(p.linkedin){
+    const social=element('div','social');
+    const symbols=element('span','reaction-icons');symbols.setAttribute('aria-hidden','true');
+    symbols.append(element('i','','👍'),element('i','','♥'),element('i','','👏'));
+    social.append(symbols,element('span','',p.reactions.toLocaleString('en-US')+' reactions'),sourceLink(p,p.comments.toLocaleString('en-US')+' comments'));item.append(social);
+  }
   const actions=element('div','actions');
   const scan=button(p.result?'Scan details':busy.has(p.id)?'Scanning…':'Scan with Pangram','action',()=>p.result?detailsFor(p):runSingle(p));
-  scan.prepend(element('span','scan-icon'));scan.disabled=busy.has(p.id)||(!p.result&&batch);actions.append(scan);
+  scan.prepend(element('span','scan-icon'));scan.disabled=busy.has(p.id)||(!p.result&&batch);
+  if(p.linkedin&&!longEnough(p)){actions.append(element('small','short-post','Under 50 words · unscored'));}else actions.append(scan);
   if(p.own&&p.disclosed)actions.append(button(disclosures.has(p.id)?'Hide disclosure':'Reveal who wrote it','action',()=>{
     if(disclosures.has(p.id))disclosures.delete(p.id);else disclosures.add(p.id);repaintCard(p);
   }));
@@ -138,12 +191,11 @@ function card(p){
     const voice=button(openVoices.has(p.id)?'Close recording':'Hear the original','action audio-action',()=>{
       if(openVoices.delete(p.id))repaintCard(p);else activateVoice(p);
     });voice.prepend(element('span','play-icon'));actions.append(voice);
-  }else if(p.url){
-    const a=element('a','action','Read original');a.href=p.url;a.target='_blank';a.rel='noreferrer';actions.append(a);
   }
+  if(p.linkedin){actions.append(sourceLink(p,'View on LinkedIn'));}
   if(p.own&&!busy.has(p.id)&&!batch)actions.append(button('Remove','action',()=>{
     const body=dialog('Remove this post?');body.append(element('p','','This removes the post and its recording from this browser.'),
-      button('Remove post','dark-btn',async()=>{try{await localData('delete',p.id);posts.splice(posts.indexOf(p),1);if(blobUrls.has(p.id)){URL.revokeObjectURL(blobUrls.get(p.id));blobUrls.delete(p.id);}modal.close();render();}catch{toast('Could not remove this local post.');}}));
+      button('Remove post','dark-btn',async()=>{try{await localData('delete',p.id);posts.splice(posts.indexOf(p),1);for(const key of [p.id,'photo-'+p.id]){if(blobUrls.has(key)){URL.revokeObjectURL(blobUrls.get(key));blobUrls.delete(key);}}modal.close();render();}catch{toast('Could not remove this local post.');}}));
   }));
   item.append(actions);
   if(openVoices.has(p.id))addVoice(p,item);
@@ -164,13 +216,13 @@ function stats(){
   }
   const scanAll=$('#scan-all');
   const ready=posts.some(p=>!p.result&&longEnough(p));
-  scanAll.textContent=batch?'Scanning…':done===posts.length?'Feed scanned':ready?'Scan the feed':'No eligible posts';
-  scanAll.disabled=batch||busy.size>0||!ready;
+  scanAll.textContent=batch?'Scanning…':ready?'Scan the feed':'Review results';
+  scanAll.disabled=batch||busy.size>0||(!ready&&!done);
   const note=$('#filter-note');note.hidden=!filter;
-  note.textContent='Folding likely AI results and posts with disclosed AI authorship. Every post can be reopened.';
+  note.textContent='Posts marked AI Detected or disclosed as AI are folded. Uncertain results stay visible.';
 }
 $('#filter').onchange=e=>{filter=e.target.checked;unfolded.clear();render();};
-$('#hear-tape').onclick=()=>activateVoice(posts.find(p=>p.id==='apollo'),true);
+
 async function save(p){
   const stored=p.own?p:{id:p.id,scannedText:scanText(p),result:p.result};
   await localData('put',stored);
@@ -178,7 +230,7 @@ async function save(p){
 async function scanPost(p){
   busy.add(p.id);repaintCard(p);stats();
   try{
-    const r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:scanText(p)})});
+    const r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p.linkedin?{post_id:p.id}:{text:p.body})});
     const data=await r.json();
     if(!r.ok){if(r.status===402)setState({state:'credits',message:data.error});throw Object.assign(new Error(data.error||'Scan failed. Try again.'),{status:r.status});}
     p.result=data;
@@ -190,12 +242,26 @@ function showFailure(message){
 }
 async function runSingle(p){
   if(busy.has(p.id)||batch)return;
-  try{await scanPost(p);$('#scan-progress').textContent='';detailsFor(p);}catch(e){showFailure(e.message);}
+  try{await scanPost(p);$('#scan-progress').textContent='';detailsFor(p);}catch(e){
+    if(e.status===402&&!p.linkedin){
+      const pane=dialog('Use your Pangram dashboard');
+      pane.append(element('p','','Your API balance is empty. Copy this post, open your Pangram dashboard, paste the text and choose Check for AI.'));
+      pane.append(button('Copy post text','secondary',async()=>{try{await navigator.clipboard.writeText(p.body);toast('Post copied.');}catch{toast('Select and copy the original post text.');}}));
+      const link=element('a','launch-dashboard','Open Pangram');link.href='https://www.pangram.com/dashboard';link.target='_blank';link.rel='noreferrer';pane.append(link);
+    }else showFailure(e.message);
+  }
 }
 $('#scan-all').onclick=async()=>{
   if(batch||busy.size)return;
-  batch=true;render();
   const todo=posts.filter(p=>!p.result&&longEnough(p));
+  if(!todo.length){
+    const pane=dialog('Feed results');
+    for(const p of posts){
+      if(p.result)pane.append(button(p.name+' · '+verdict(p),'report-row',()=>detailsFor(p)));
+      else pane.append(element('p','report-short',p.name+' · '+(longEnough(p)?'Unscanned':'Under 50 words')));
+    }return;
+  }
+  batch=true;render();
   let skipped=posts.filter(p=>!p.result&&!longEnough(p)).length;
   try{
     for(const [i,p] of todo.entries()){
@@ -213,6 +279,7 @@ function composer(){
     <p>Paste the post exactly as you published it.</p>
     <form id="compose">
       <label class="field"><span>Post text</span><textarea name="text" maxlength="24000" placeholder="Paste your LinkedIn post here…" required></textarea></label>
+      <label class="field"><span>Post photo <small>(optional)</small></span><input type="file" name="photo" accept="image/jpeg,image/png,image/webp"></label>
       <label class="checkline"><input type="checkbox" name="disclosed"> I wrote this post with AI <small>(optional disclosure)</small></label>
       <details><summary>Add a name, impressions or original voice</summary>
         <label class="field"><span>Display name</span><input name="author" maxlength="60" placeholder="Your post"></label>
@@ -257,6 +324,10 @@ function composer(){
     e.preventDefault();const message=$('#form-feedback'),text=input.value.trim();
     if(!text){message.textContent='Paste your post first.';return;}
     if(capturing){message.textContent='Finish recording before adding your post.';return;}
+    const photoFile=form.elements.photo.files[0]||null;
+    if(photoFile && (!['image/jpeg','image/png','image/webp'].includes(photoFile.type)||photoFile.size>10*1024*1024)){
+      message.textContent='Choose a JPG, PNG or WebP image under 10 MB.';return;
+    }
     const audio=file.files[0]||voice||null;
     if(audio&&audio.size>12*1024*1024){message.textContent='Choose an audio clip under 12 MB.';return;}
     if(audio?.type&&!audio.type.startsWith('audio/')&&!['video/webm','video/mp4','application/ogg'].includes(audio.type)){
@@ -264,7 +335,7 @@ function composer(){
     }
     const name=form.elements.author.value.trim()||'Your post';
     const p={id:crypto.randomUUID(),own:true,name,meta:'Added by you',mark:name.slice(0,1).toUpperCase(),theme:'own',title:'',body:text,
-      impressions:form.elements.impressions.value,disclosed:form.elements.disclosed.checked,voice:audio,created:Date.now()};
+      impressions:form.elements.impressions.value,disclosed:form.elements.disclosed.checked,voice:audio,photoFile,created:Date.now()};
     const submit=form.querySelector('[type=submit]');submit.disabled=true;
     try{
       await save(p);posts.unshift(p);modal.close();render();$('#feed').scrollIntoView({block:'start'});
@@ -276,6 +347,14 @@ function composer(){
 }
 $('#add').onclick=composer;
 async function init(){
+  try{
+    const response=await fetch('/linkedin.json');
+    if(!response.ok)throw Error();
+    posts.push(...await response.json());
+    const featured=posts.find(p=>p.featured);
+    if(featured?.avatar){const profile=$('#profile-image');profile.referrerPolicy='no-referrer';profile.src=featured.avatar;profile.hidden=false;}
+    if(featured)$('#profile-source').href='#post-'+featured.id;
+  }catch{$('#cards').textContent='Could not load the feed. Refresh to try again.';return;}
   try{
     const stored=await localData('getAll');
     for(const p of posts){const row=stored.find(x=>x.id===p.id);if(row?.scannedText===scanText(p)&&row?.result)p.result=row.result;}

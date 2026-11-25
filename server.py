@@ -23,7 +23,7 @@ LOCKS = [threading.Lock() for _ in range(16)]
 STATUS_LOCK = threading.Lock()
 status_cache = {}
 STATIC_TYPES = {".html":"text/html", ".css":"text/css", ".js":"text/javascript",
-                ".mp3":"audio/mpeg", ".woff2":"font/woff2", ".png":"image/png"}
+                ".mp3":"audio/mpeg", ".woff2":"font/woff2", ".png":"image/png", ".json":"application/json; charset=utf-8"}
 
 class Problem(Exception):
     def __init__(self, status, message):
@@ -134,6 +134,36 @@ def scan(text, key):
             time.sleep(1)
         raise Problem(504, "Pangram is still analyzing. Retry to resume the same scan.")
 
+def original_text(post_id):
+    # Only curator-selected, public LinkedIn pages can be retrieved.
+    cards = json.loads((PUBLIC / "linkedin.json").read_text())
+    post = next((p for p in cards if p["id"] == post_id), None)
+    if post is None:
+        raise Problem(404, "This original is not in the feed.")
+    if post["featured"]:
+        return post["body"]
+    digest = post["sourceHash"]
+    cached = DATA / ("original-" + digest)
+    if cached.is_file():
+        saved = cached.read_text()
+        if hashlib.sha256(saved.encode()).hexdigest() == digest:
+            return saved
+    try:
+        with urlopen(post["url"], timeout=8) as response:
+            page = response.read(3000000).decode()
+        schemas = re.findall(r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>', page, re.S)
+        for schema in schemas:
+            obj = json.loads(schema)
+            if isinstance(obj, dict) and obj.get("@type") == "SocialMediaPosting":
+                text = obj.get("articleBody", "").strip()
+                if hashlib.sha256(text.encode()).hexdigest() == digest:
+                    cached.write_text(text)
+                    return text
+    except (OSError, ValueError):
+        pass
+    raise Problem(409, "LinkedIn has changed this post or the original is unavailable. Open it on LinkedIn to check the current version.")
+
+
 class Handler(BaseHTTPRequestHandler):
     def reply(self, status, body, content_type="application/json"):
         if content_type == "application/json":
@@ -143,7 +173,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' blob:; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'")
+        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' blob:; img-src 'self' data: blob: https://media.licdn.com; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'")
         self.end_headers()
         try:
             self.wfile.write(body)
@@ -180,7 +210,8 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(size))
             if not isinstance(payload, dict):
                 raise ValueError
-            self.reply(200, scan(payload.get("text"), api_key()))
+            text = original_text(payload["post_id"]) if "post_id" in payload else payload.get("text")
+            self.reply(200, scan(text, api_key()))
         except Problem as exc:
             self.reply(exc.status, {"error":exc.message})
         except (ValueError, UnicodeError):

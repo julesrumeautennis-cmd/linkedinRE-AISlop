@@ -1,40 +1,28 @@
 <!doctype html>
-<html lang="en">
-<head>
+<html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#14251d"><title>Offscript — The authorship feed</title>
-<meta name="description" content="Look past the likes. Analyze a post with Pangram and hear its original voice.">
+<meta name="theme-color" content="#ffffff"><title>LinkedIn feed · Offscript</title>
+<meta name="description" content="Ten real LinkedIn posts. Scan the original text with Pangram and filter your feed.">
 <link rel="icon" href="data:,"><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
 </head><body>
 <header><div class="shell top">
-<a href="#top" class="brand" aria-label="Offscript home"><span class="brandmark" aria-hidden="true"><i></i><i></i><i></i></span>Offscript<span class="brand-period">.</span></a>
-<nav aria-label="Main"><a href="#feed" class="active">Feed</a><button type="button" id="method">How it works</button></nav>
+<a href="#feed" class="feed-brand" aria-label="LinkedIn feed, an Offscript demo"><span class="in-mark" aria-hidden="true">in</span> LinkedIn feed</a>
+<span class="demo-name">Offscript demo</span>
+<nav aria-label="Main"><a href="#feed" class="home-tab"><span class="home-icon" aria-hidden="true"></span>Home</a><button type="button" id="method">About this feed</button></nav>
 <button type="button" id="api-status" class="api"><i class="dot"></i><span>Checking API</span></button>
 </div></header>
-<main id="top" class="shell">
-<section class="hero" aria-labelledby="hero-title">
-<div class="hero-copy"><h1 id="hero-title">Who wrote<br><em>your feed?</em></h1>
-<p>Look past the likes. Check a post with Pangram<br class="desktop-br"> and hear the voice behind it.</p>
-<button type="button" class="bright" id="add"><b aria-hidden="true">＋</b> Add your post</button></div>
-<canvas id="print" role="img" aria-label="An ink fingerprint dissolving into digital pixels"></canvas>
-</section>
-<div class="layout"><section id="feed" aria-labelledby="feed-title">
-<div class="sectionhead"><h2 id="feed-title">The feed<span id="count"></span></h2>
-<label class="toggle"><span>Hide likely AI</span><input type="checkbox" id="filter"><span class="track" aria-hidden="true"></span></label></div>
-<p id="filter-note" class="filter-note" hidden></p><div id="cards"></div>
-</section>
-<aside>
-<section class="panel scanpanel"><div class="panel-title"><span class="scan-icon" aria-hidden="true"></span><h2>Feed scan</h2></div>
-<div class="bigstat"><strong id="scanned">0</strong><span id="scan-total">/ 6</span></div><div class="stat-label">posts analyzed</div>
-<div class="meter" id="meter" aria-hidden="true"></div>
-<div id="legend" class="legend"></div><button type="button" class="dark-btn" id="scan-all">Scan the feed</button>
-<p id="scan-progress" class="feedback" aria-live="polite"></p>
-</section>
-<section class="panel soundpanel"><div class="tape" aria-hidden="true"><div class="tape-case"><div class="tape-name">APOLLO 13 <span>SIDE A</span></div><div class="tape-stripes"><i></i><b></b><i></i></div><div class="tape-base"></div></div></div>
-<h2>The original tape</h2><p>Before the LinkedIn rewrite, there were 17 seconds of mission audio.</p>
-<button type="button" id="hear-tape" class="text-btn"><span class="play-icon"></span> Hear Apollo 13</button></section>
-</aside></div></main>
-<footer class="shell"><b>Offscript.</b><span>A local feed experiment with Pangram.</span></footer>
-<dialog id="modal"><button type="button" class="close" aria-label="Close dialog">×</button><div id="dialog-body"></div></dialog>
-<div id="toast" role="status"></div>
+<main id="top" class="shell workgrid">
+<div class="left-col"><section class="profile-panel"><div class="profile-cover"></div>
+<div class="profile-info"><img id="profile-image" alt="" width="62" height="62" hidden><small>Featured author</small><h2>Jules Rumeau</h2><p>NASA Space Apps Challenge</p><a id="profile-source" href="#feed">View featured post</a></div></section></div>
+<section id="feed" aria-labelledby="feed-title">
+<div class="composer-strip"><span class="in-small" aria-hidden="true">in</span><button type="button" id="add">Add your LinkedIn post</button></div>
+<div class="sectionhead"><h1 id="feed-title">Viral posts <span id="count"></span></h1>
+<label class="toggle"><span>Hide AI detections</span><input type="checkbox" id="filter"><span class="track" aria-hidden="true"></span></label></div>
+<p id="filter-note" class="filter-note" hidden></p><div id="cards"></div></section>
+<aside><section class="panel scanpanel"><div class="panel-title"><span class="scan-icon" aria-hidden="true"></span><h2>Pangram scan</h2></div>
+<div class="bigstat"><strong id="scanned">0</strong><span id="scan-total">/ 10</span></div><div class="stat-label">posts analyzed</div>
+<div class="meter" id="meter" aria-hidden="true"></div><div id="legend" class="legend"></div>
+<button type="button" class="dark-btn" id="scan-all">Scan the feed</button><p id="scan-progress" class="feedback" aria-live="polite"></p></section></aside>
+</main>
+<dialog id="modal"><button type="button" class="close" aria-label="Close dialog">×</button><div id="dialog-body"></div></dialog><div id="toast" role="status"></div>
 </body></html>

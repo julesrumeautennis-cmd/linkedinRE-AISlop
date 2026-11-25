@@ -1,22 +1,23 @@
 # Offscript
 
-A local LinkedIn-style feed for the Non-Slop Hackathon. Paste a post, add the real impression count, and attach or record its original voice. Scan the text with Pangram, filter the feed, and play the recording alongside the published version.
+A local LinkedIn-style feed featuring ten real public posts and their original photos. The first card is Jules Rumeau’s NASA Space Apps post. Each card links back to LinkedIn. Source counts are snapshots from November 24, 2026. The feed is curated and has no automatic LinkedIn timeline subscription.
 
-## Run locally
+## Start
 
-Python 3.9 or later is sufficient. In the project directory, copy `.env.example` to `.env` on first setup and enter your key after `PANGRAM_API_KEY=`. The server also accepts that environment variable from your shell. The key is read on each request and remains on the server.
+Requires Python 3.9 or later. On first setup, copy `.env.example` to `.env` and set `PANGRAM_API_KEY`. An exported environment variable also works.
 
 ```sh
 python3 server.py
 ```
 
-Open <http://127.0.0.1:8787>. Keep using the same address and browser to retain added posts and recordings. To change the port, set `PORT`.
+Open <http://127.0.0.1:8787/>. Keep using the same browser and address for saved personal posts, photos and audio.
 
-## Demo
+## Give the demo
 
-1. Choose **Add your post**. Paste the full published text. Under the optional fields, add the actual impressions and a recording telling the story in your own words.
-2. Choose **Scan with Pangram**. The app submits only the text to the [Pangram inference API](https://docs.pangram.com/api-reference/ai-detection), polls the task and displays its result. Use at least 50 words. The status button checks the [API credit balance](https://docs.pangram.com/api-reference/balance).
-3. Choose **Hide likely AI**. High-confidence AI posts fold into a single row. Disclosed AI samples can be folded before their first scan. Mixed, uncertain and unscanned personal posts remain visible.
-4. Click **Hear the original**. An example pairs a disclosed AI rewrite with 17 seconds of [NASA Apollo 13 mission audio](https://www.nasa.gov/historical-sounds/).
+Open **Scan details** on a card to see the actual Pangram verdict and its source. Eight full public captions were checked on the authenticated Pangram dashboard on November 24. Two captions were under the app's 50-word minimum. **Hide AI detections** folds flagged writing, including a mixed post when Pangram reports “AI Detected”. Low-confidence posts stay visible. **Review results** lists the feed.
 
-The starter feed is curated locally. The historical texts link to their originals. Names, impressions and voice notes are stored in this browser’s IndexedDB. Completed scan summaries and resumable task IDs are cached under the ignored `.local/` directory. Pangram requires a funded API account for live classification. Sample provenance labels come from the source material. Only successful API responses count as scans.
+Choose **Add your LinkedIn post** to paste a new caption and optionally attach a photo, a voice note or actual impressions. **Scan with Pangram** submits the text to the official async API, which requires an available API balance. The status control checks the balance. A zero-balance response on a personal post offers a copy button and a link to the official dashboard.
+
+## Data
+
+The public catalog contains source URLs, original LinkedIn-hosted media URLs, counts, short previews and the verified web results. Scans use the full caption. The backend resolves only curated URLs and checks the caption hash against the snapshot. Scan summaries and cached source text live locally in the ignored `.local/` directory. The browser loads photos from LinkedIn’s CDN. Newly added posts, uploaded photos, and voice notes remain in this browser’s IndexedDB.
