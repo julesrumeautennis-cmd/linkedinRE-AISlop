@@ -5,7 +5,7 @@
   "functions": {
     "api/*.py": {
       "maxDuration": 90,
-      "includeFiles": "public/linkedin.json"
+      "includeFiles": "data/*.json"
     }
   },
   "headers": [

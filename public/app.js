@@ -13,7 +13,8 @@ async function localData(method,value){
     tx.oncomplete=()=>resolve(req.result);tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);
   });
 }
-const posts=[];
+const demoPosts=[],savedPosts=[];
+let posts=demoPosts,runId=crypto.randomUUID();
 const expanded=new Set(), unfolded=new Set(), openVoices=new Set(), disclosures=new Set(), busy=new Set();
 const blobUrls=new Map();
 let stickers=true, filter=false, batch=false, state={state:'checking'}, timer, recordingCleanup=null;
@@ -120,7 +121,7 @@ function gallery(p){
 }
 function repaintCard(p){
   const prior=document.getElementById('post-'+p.id);
-  if(prior)prior.replaceWith(card(p));else $('#cards').prepend(card(p));
+  if(prior)prior.replaceWith(card(p));
 }
 function audioUrl(p){
   if(p.audio)return p.audio;
@@ -201,7 +202,11 @@ function card(p){
   return item;
 }
 function render(){
-  $('#stream-label').textContent=posts.some(p=>p.mcp)?'Your feed':'Viral posts';
+  const inDemo=posts===demoPosts;
+  $('#stream-label').textContent=inDemo?'Demo feed':'Saved posts';
+  const library=$('#library');
+  library.hidden=inDemo&&!savedPosts.length;
+  library.textContent=inDemo?'Saved posts ('+savedPosts.length+')':'Back to demo feed';
   $('#cards').replaceChildren(...posts.map(card));stats();
 }
 function stats(){
@@ -218,19 +223,35 @@ function stats(){
   const ready=posts.some(p=>!p.result&&longEnough(p));
   scanAll.textContent=batch?'Scanning…':ready?'Scan the feed':'Review results';
   scanAll.disabled=batch||busy.size>0||(!ready&&!done);
+  const locked=batch||busy.size>0;
+  $('#library').disabled=locked;
+  $('#add').disabled=locked;
+  $('#reset-demo').hidden=posts!==demoPosts||(!done&&!batch);
+  $('#reset-demo').disabled=locked;
   const note=$('#filter-note');note.hidden=!filter;
   note.textContent='Posts above 30% AI-written are folded.';
 }
 $('#stickers').onchange=e=>{stickers=e.target.checked;render();};
 $('#filter').onchange=e=>{filter=e.target.checked;unfolded.clear();render();};
 
+function switchFeed(next){
+  posts=next;filter=false;stickers=true;unfolded.clear();
+  $('#filter').checked=false;$('#stickers').checked=true;
+  $('#scan-progress').textContent='';render();
+}
+$('#library').onclick=()=>switchFeed(posts===demoPosts?savedPosts:demoPosts);
+$('#reset-demo').onclick=()=>{
+  if(batch||busy.size)return;
+  for(const p of demoPosts)delete p.result;
+  runId=crypto.randomUUID();switchFeed(demoPosts);
+};
 async function save(p){
   if(p.own||p.mcp)await localData('put',p);
 }
 async function scanPost(p){
   busy.add(p.id);repaintCard(p);stats();
   try{
-    const r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p.linkedin&&!p.mcp?{post_id:p.id}:{text:p.body})});
+    const r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p.linkedin&&!p.mcp?{post_id:p.id,run_id:runId}:{text:p.body})});
     const data=await r.json();
     if(!r.ok){if(r.status===402)setState({state:'credits',message:data.error});throw Object.assign(new Error(data.error||'Scan failed. Try again.'),{status:r.status});}
     p.result=data;
@@ -242,7 +263,7 @@ function showFailure(message){
 }
 async function runSingle(p){
   if(busy.has(p.id)||batch)return;
-  try{await scanPost(p);$('#scan-progress').textContent='';detailsFor(p);}catch(e){
+  try{await scanPost(p);$('#scan-progress').textContent='';}catch(e){
     if(e.status===402&&!p.linkedin){
       const pane=dialog('Use your Pangram dashboard');
       pane.append(element('p','','Your API balance is empty. Copy this post, open your Pangram dashboard, paste the text and choose Check for AI.'));
@@ -262,15 +283,27 @@ $('#scan-all').onclick=async()=>{
     }return;
   }
   batch=true;render();
-  let skipped=posts.filter(p=>!p.result&&!longEnough(p)).length;
-  try{
-    for(const [i,p] of todo.entries()){
-      $('#scan-progress').textContent='Analyzing '+(i+1)+' of '+todo.length+'…';
-      try{await scanPost(p);}catch(e){if(e.status===422)skipped++;else throw e;}
+  const progress=$('#scan-progress');
+  const queue=todo.values();let completed=0, failures=0, stopReason='';
+  progress.textContent='Scanning 0 / '+todo.length+'…';
+  async function worker(){
+    for(const p of queue){
+      if(stopReason)return;
+      try{await scanPost(p);completed++;}
+      catch(e){
+        failures++;
+        if([401,402,403,429].includes(e.status))stopReason=e.message;
+      }
+      progress.textContent='Scanning '+completed+' / '+todo.length+'…';
     }
-    $('#scan-progress').textContent=skipped?'Scan complete. Unclassified posts remaining: '+skipped+'.':'Feed scan complete.';
-  }catch(e){showFailure(e.message);}
-  finally{batch=false;render();}
+  }
+  try{
+    await Promise.all([worker(),worker()]);
+    progress.textContent=stopReason||(
+      failures?'Scanned '+completed+' of '+todo.length+'. Click Scan the feed to retry.':
+      completed+' posts scanned.'
+    );
+  }finally{batch=false;render();}
 };
 
 function composer(){
@@ -338,7 +371,7 @@ function composer(){
       impressions:form.elements.impressions.value,disclosed:form.elements.disclosed.checked,voice:audio,photoFile,created:Date.now()};
     const submit=form.querySelector('[type=submit]');submit.disabled=true;
     try{
-      await save(p);posts.unshift(p);modal.close();render();$('#feed').scrollIntoView({block:'start'});
+      await save(p);savedPosts.unshift(p);modal.close();switchFeed(savedPosts);$('#feed').scrollIntoView({block:'start'});
       toast('Post saved to this feed.');
     }catch{message.textContent='Could not save this post locally. Try a shorter recording or free up browser storage.';}
     finally{submit.disabled=false;}
@@ -350,15 +383,15 @@ async function init(){
   try{
     const response=await fetch('/api/feed');
     if(!response.ok)throw Error();
-    posts.push(...await response.json());
+    demoPosts.push(...await response.json());
     const featured=posts.find(p=>p.featured);
     if(featured?.avatar){const profile=$('#profile-image');profile.referrerPolicy='no-referrer';profile.src=featured.avatar;profile.hidden=false;}
-    if(featured)$('#profile-source').href='#post-'+featured.id;
+    if(featured){const link=$('#profile-source');link.href='#post-'+featured.id;link.onclick=e=>{if(batch||busy.size){e.preventDefault();return;}if(posts!==demoPosts)switchFeed(demoPosts);};}
   }catch{$('#cards').textContent='Could not load the feed. Refresh to try again.';return;}
   try{
     const stored=await localData('getAll');
     for(const p of stored){if(p.result&&!kind(p))delete p.result;}
-    posts.unshift(...stored.filter(p=>p.own||p.mcp).sort((a,b)=>b.created-a.created));
+    savedPosts.push(...stored.filter(p=>p.own||p.mcp).sort((a,b)=>b.created-a.created));
   }catch{toast('Browser storage is unavailable. Local posts need storage enabled.');}
   render();await checkStatus();
 }
@@ -371,14 +404,15 @@ async function importFeed(items){
   const latest=[];
   for(const card of items.slice(0,10)){
     if(!card.mcp || !/^mcp-[a-z0-9]+$/.test(card.id) || !/^https:\/\/www\.linkedin\.com\/(posts|feed\/update)\//.test(card.url))continue;
-    const old=posts.find(p=>p.id===card.id);
+    const old=savedPosts.find(p=>p.id===card.id);
     if(old?.body===card.body&&old.result)card.result=old.result;
     card.created=Date.now()-latest.length;
     await save(card);latest.push(card);
   }
   const ids=new Set(latest.map(p=>p.id));
-  for(let i=posts.length-1;i>=0;i--)if(ids.has(posts[i].id))posts.splice(i,1);
-  posts.unshift(...latest);render();
+  for(let i=savedPosts.length-1;i>=0;i--)if(ids.has(savedPosts[i].id))savedPosts.splice(i,1);
+  savedPosts.unshift(...latest);
+  if(!batch&&!busy.size)switchFeed(savedPosts);else render();
   toast(latest.length+' recent LinkedIn posts synced.');
 }
 window.addEventListener('message',async e=>{

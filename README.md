@@ -1,10 +1,10 @@
 # Offscript
 
-A LinkedIn feed you can switch between its original appearance and Pangram verdict stickers. The public collection includes ten real posts and their original media links. It starts with Jules Rumeau’s NASA Space Apps post. Eight captions have saved results from the live Pangram 4.1 API. Two are under the app’s 50-word minimum.
+A LinkedIn feed you can switch between its original appearance and Pangram verdict stickers. The public demo opens with twenty real LinkedIn posts, including Jules Rumeau’s NASA Space Apps post. All twenty captions meet the 50-word minimum. Each page load starts at 0/20, including on browsers that have saved personal posts.
 
 ## Demo
 
-Open a sticker for the model’s underlying verdict. Offscript labels a scored post **AI SLOP** when Pangram's unrounded `fraction_ai` exceeds 0.30, and **HUMAN** at or below 0.30. This is a product rule. The percentage estimates the share of AI-generated text. **Hide AI** folds flagged cards. **Verdict stickers** toggles the overlay. To run a fresh scan, choose **Add your LinkedIn post**, paste at least 50 words, then choose **Scan with Pangram**.
+Click **Scan the feed** for a live batch, or **Scan with Pangram** on an individual post. Results appear as each request finishes. **Restart demo** clears the verdicts and starts a fresh run. Personal imports are available under **Saved posts**. Open a sticker for the model’s underlying verdict. Offscript labels a scored post **AI SLOP** when Pangram's unrounded `fraction_ai` exceeds 0.30, and **HUMAN** at or below 0.30. This is a product rule. The percentage estimates the share of AI-generated text. **Hide AI** folds flagged cards. **Verdict stickers** toggles the overlay. To run a fresh scan, choose **Add your LinkedIn post**, paste at least 50 words, then choose **Scan with Pangram**.
 
 ## Run locally
 
@@ -24,6 +24,6 @@ Complete LinkedIn sign-in in the dedicated browser window. Start the local Offsc
 
 ## Vercel
 
-Import the GitHub repository, choose the Other framework preset and set `PANGRAM_API_KEY` as a server-only Production secret. The repository includes static assets and three Python functions. The public catalog ships with API-verified results for the curated posts. Fresh submissions call Pangram, with a temporary per-instance cache and rate limit. Local LinkedIn sessions are excluded from the deployment. The status endpoint checks API connectivity without displaying the account balance publicly.
+Import the GitHub repository, choose the Other framework preset and set `PANGRAM_API_KEY` as a server-only Production secret. The repository includes static assets and three Python functions. The catalog ships with public excerpts and source hashes. Production packages the matching full captions in the server-only file `data/captions.json`, keyed by SHA-256. When that optional bundle is absent, the server checks the original public post against its hash. A new demo run submits fresh Pangram tasks. Retries within a run reuse completed or pending tasks where the instance cache is available. Curated runs and custom text have separate rate limits. Local LinkedIn sessions are excluded from the deployment. The status endpoint checks API connectivity without displaying the account balance publicly.
 
 To attach a domain, open the project's Settings → Domains, add the hostname and copy the DNS records displayed by Vercel to your DNS provider.

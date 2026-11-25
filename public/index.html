@@ -2,7 +2,7 @@
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#ffffff"><title>LinkedIn feed · Offscript</title>
-<meta name="description" content="Ten real LinkedIn posts. Scan the original text with Pangram and filter your feed.">
+<meta name="description" content="Explore 20 public LinkedIn posts. Scan the feed live with Pangram to reveal the verdicts.">
 <link rel="icon" href="data:,"><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
 </head><body>
 <header><div class="shell top">
@@ -16,14 +16,14 @@
 <div class="profile-info"><img id="profile-image" alt="" width="62" height="62" hidden><small>Featured author</small><h2>Jules Rumeau</h2><p>NASA Space Apps Challenge</p><a id="profile-source" href="#feed">View featured post</a></div></section></div>
 <section id="feed" aria-labelledby="feed-title">
 <div class="composer-strip"><span class="in-small" aria-hidden="true">in</span><button type="button" id="add">Add your LinkedIn post</button></div>
-<div class="sectionhead"><h1 id="feed-title"><b id="stream-label">Viral posts</b> <span id="count"></span></h1>
+<div class="sectionhead"><h1 id="feed-title"><b id="stream-label">Demo feed</b> <span id="count"></span></h1>
 <label class="toggle"><span>Hide AI</span><input type="checkbox" id="filter"><span class="track" aria-hidden="true"></span></label></div>
-<div class="verdict-controls"><button class="mcp-link" type="button" id="sync">Sync my LinkedIn</button><label class="toggle"><span>Verdict stickers</span><input type="checkbox" id="stickers" checked><span class="track" aria-hidden="true"></span></label></div>
+<div class="verdict-controls"><div class="feed-tools"><button class="mcp-link" type="button" id="sync">Sync my LinkedIn</button><button id="library" class="mcp-link" hidden>Saved posts</button></div><label class="toggle"><span>Verdict stickers</span><input type="checkbox" id="stickers" checked><span class="track" aria-hidden="true"></span></label></div>
 <p id="filter-note" class="filter-note" hidden></p><div id="cards"></div></section>
 <aside><section class="panel scanpanel"><div class="panel-title"><span class="scan-icon" aria-hidden="true"></span><h2>Pangram scan</h2></div>
-<div class="bigstat"><strong id="scanned">0</strong><span id="scan-total">/ 10</span></div><div class="stat-label">posts analyzed</div>
+<div class="bigstat"><strong id="scanned">0</strong><span id="scan-total">/ 20</span></div><div class="stat-label">posts analyzed</div>
 <div class="meter" id="meter" aria-hidden="true"></div><div id="legend" class="legend"></div>
-<button type="button" class="dark-btn" id="scan-all">Scan the feed</button><p id="scan-progress" class="feedback" aria-live="polite"></p></section></aside>
+<button type="button" class="dark-btn" id="scan-all" disabled>Scan the feed</button><button type="button" class="reset-demo mcp-link" id="reset-demo" hidden>Restart demo</button><p id="scan-progress" class="feedback" aria-live="polite"></p></section></aside>
 </main>
 <dialog id="modal"><button type="button" class="close" aria-label="Close dialog">×</button><div id="dialog-body"></div></dialog><div id="toast" role="status"></div>
 </body></html>

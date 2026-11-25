@@ -54,3 +54,6 @@ form,.field{display:grid;gap:10px}.field{gap:4px}.field span,summary,.checkline{
 .verdict-sticker:focus-visible{outline-offset:5px}
 @media(max-width:480px){.verdict-sticker{padding:5px 8px}.card-top{gap:8px}.verdict-controls .toggle{font-size:12px}}
 .bridge-page{max-width:430px;margin:12vh auto;padding:24px}.bridge-page h1{font-size:26px}.bridge-page p{margin:16px 0;overflow-wrap:anywhere}
+.feed-tools{display:flex;flex-wrap:wrap;align-items:center;column-gap:14px;row-gap:3px}
+.reset-demo{display:block;margin:9px auto 0;font-size:13px}
+@media(max-width:710px){.reset-demo{grid-column:1/-1;justify-self:end;margin:4px 0 0}}

@@ -9,6 +9,7 @@ import re
 import sqlite3
 import threading
 import time
+from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -17,6 +18,7 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parent
 PUBLIC = ROOT / "public"
+CATALOG = ROOT / "data"
 HOSTED = os.getenv("VERCEL") == "1"
 DATA = (Path(tempfile.gettempdir()) / "offscript") if HOSTED else ROOT / ".local"
 BASE = "https://text.external-api.pangram.com"
@@ -104,24 +106,27 @@ def classify(raw):
     return {"kind":kind, "fraction_ai":fraction, "shares":shares, "version":str(raw.get("version", "")), "verdict":str(raw.get("prediction_short", "")),
             "headline":str(raw.get("headline", "")), "prediction":str(raw.get("prediction", ""))}
 
-def reserve_scan(db, client):
-    # Bound paid, uncached submissions from the public demo on each warm instance.
+def reserve_scan(db, client, curated):
+    # Allow a complete 20-post demo while keeping separate limits for free-form text.
+    scope = "feed:" if curated else "custom:"
+    per_hour, per_five_minutes = (240, 60) if curated else (24, 4)
+    visitor = scope + hashlib.sha256(client.encode()).hexdigest()
     now = int(time.time())
     db.execute("BEGIN IMMEDIATE")
     db.execute("DELETE FROM usage WHERE created < ?", (now - 3600,))
     count, recent = db.execute(
-        "SELECT count(*), count(CASE WHEN client=? AND created>? THEN 1 END) FROM usage",
-        (hashlib.sha256(client.encode()).hexdigest(), now - 300),
+        "SELECT count(*), count(CASE WHEN client=? AND created>? THEN 1 END) "
+        "FROM usage WHERE client LIKE ?", (visitor, now - 300, scope + "%"),
     ).fetchone()
-    if count >= 24 or recent >= 4:
+    if count >= per_hour or recent >= per_five_minutes:
         raise Problem(429, "Live scan limit reached. Try again later.")
-    db.execute("INSERT INTO usage VALUES (?, ?)", (hashlib.sha256(client.encode()).hexdigest(), now))
+    db.execute("INSERT INTO usage VALUES (?, ?)", (visitor, now))
     db.commit()
 
-def scan_digest(text):
-    return hashlib.sha256(("default\x00" + text.strip()).encode()).hexdigest()
+def scan_digest(text, run_id=""):
+    return hashlib.sha256(("default\x00" + run_id + ("\x00" if run_id else "") + text.strip()).encode()).hexdigest()
 
-def scan(text, key, client=None):
+def scan(text, key, client=None, run_id="", curated=False):
     if not isinstance(text, str) or len(text) > MAX_CHARS:
         raise Problem(400, "Use up to 24,000 characters.")
     text = text.strip()
@@ -129,7 +134,7 @@ def scan(text, key, client=None):
         raise Problem(422, "Pangram needs at least 50 words of prose.")
     if not key:
         raise Problem(503, "Add PANGRAM_API_KEY to .env and save, then scan again.")
-    digest = scan_digest(text)
+    digest = scan_digest(text, run_id)
     # Keep pending task IDs across timeouts so a retry polls the already-paid scan.
     with LOCKS[int(digest[:2], 16) % len(LOCKS)], sqlite3.connect(DATA / "scans.db") as db:
         row = db.execute("SELECT task, result FROM scans WHERE digest=?", (digest,)).fetchone()
@@ -138,7 +143,7 @@ def scan(text, key, client=None):
         task = row[0] if row else None
         if not task:
             if client:
-                reserve_scan(db, client)
+                reserve_scan(db, client, curated)
             obj = provider(key, "/task", {"text":text, "model":"default", "public_dashboard_link":False})
             task = obj.get("task_id")
             if not isinstance(task, str) or not task:
@@ -160,10 +165,18 @@ def scan(text, key, client=None):
             time.sleep(1)
         raise Problem(504, "Pangram is still analyzing. Retry to resume the same scan.")
 
+@lru_cache(maxsize=1)
+def bundled_captions():
+    path = CATALOG / "captions.json"
+    return json.loads(path.read_text()) if path.is_file() else {}
+
 def local_caption(post):
+    digest = post["sourceHash"]
     if post["featured"]:
         return post["body"]
-    digest = post["sourceHash"]
+    text = bundled_captions().get(digest)
+    if text and hashlib.sha256(text.encode()).hexdigest() == digest:
+        return text
     cached = DATA / ("original-" + digest)
     if cached.is_file():
         saved = cached.read_text()
@@ -172,19 +185,11 @@ def local_caption(post):
     return None
 
 def feed():
-    cards = json.loads((PUBLIC / "linkedin.json").read_text())
-    with sqlite3.connect(DATA / "scans.db") as db:
-        for post in cards:
-            caption = local_caption(post)
-            if caption:
-                row = db.execute("SELECT result FROM scans WHERE digest=?", (scan_digest(caption),)).fetchone()
-                if row and row[0]:
-                    post["result"] = json.loads(row[0])
-    return cards
+    # The public feed is always the neutral catalog. Only POST /api/analyze scores it.
+    return json.loads((CATALOG / "linkedin.json").read_text())
 
 def original_text(post_id):
-    # Only curator-selected, public LinkedIn pages can be retrieved.
-    cards = json.loads((PUBLIC / "linkedin.json").read_text())
+    cards = feed()
     post = next((p for p in cards if p["id"] == post_id), None)
     if post is None:
         raise Problem(404, "This original is not in the feed.")
@@ -265,13 +270,13 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(size))
             if not isinstance(payload, dict):
                 raise ValueError
-            if "post_id" in payload:
-                cached = next((p.get("result") for p in feed() if p["id"] == payload["post_id"]), None)
-                if cached:
-                    return self.reply(200, cached)
-            text = original_text(payload["post_id"]) if "post_id" in payload else payload.get("text")
+            curated = "post_id" in payload
+            run_id = payload.get("run_id", "") if curated else ""
+            if not isinstance(run_id, str) or (run_id and not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", run_id)):
+                raise Problem(400, "Invalid scan session.")
+            text = original_text(payload["post_id"]) if curated else payload.get("text")
             client = (self.headers.get("X-Vercel-Forwarded-For") or self.headers.get("X-Forwarded-For") or "public").split(",")[0] if HOSTED else None
-            self.reply(200, scan(text, api_key(), client))
+            self.reply(200, scan(text, api_key(), client, run_id, curated))
         except Problem as exc:
             self.reply(exc.status, {"error":exc.message})
         except (ValueError, UnicodeError):
