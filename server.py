@@ -1,5 +1,7 @@
 """Offscript's local web server and private Pangram API client (Python 3.9+)."""
 import hashlib
+import subprocess
+import tempfile
 import json
 import math
 import os
@@ -15,7 +17,8 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parent
 PUBLIC = ROOT / "public"
-DATA = ROOT / ".local"
+HOSTED = os.getenv("VERCEL") == "1"
+DATA = (Path(tempfile.gettempdir()) / "offscript") if HOSTED else ROOT / ".local"
 BASE = "https://text.external-api.pangram.com"
 PORT = int(os.getenv("PORT", "8787"))
 MAX_CHARS = 24000
@@ -72,32 +75,53 @@ def connection(key):
         if status_cache.get("key") == identity and status_cache["expires"] > time.monotonic():
             return status_cache["result"]
         try:
-            balance = provider(key, "/balance").get("available_balance_usd")
-            if balance is not None and float(balance) <= 0:
+            amount = provider(key, "/balance").get("available_balance_usd")
+            try:
+                balance = float(amount)
+                if not math.isfinite(balance):
+                    raise ValueError
+            except (TypeError, ValueError):
+                raise Problem(502, "Pangram did not return a valid API balance.") from None
+            if balance <= 0:
                 result = {"state":"credits", "message":"Pangram accepted your key. Add the hackathon API credits to this account to run scans."}
             else:
-                result = {"state":"connected", "message":"Pangram accepted your key and the account has API credits."}
+                result = {"state":"connected", "message":"Live scans are connected to Pangram." if HOSTED else f"Available Pangram API balance: ${balance:,.2f}."}
         except Problem as exc:
             result = {"state":"error", "message":exc.message}
         status_cache.update(key=identity, expires=time.monotonic() + (60 if result["state"] == "connected" else 8), result=result)
         return result
 
 def classify(raw):
-    verdict = str(raw.get("prediction_short", "")).strip().lower()
-    windows = raw.get("windows") or []
-    labels = {"ai":"ai", "human":"human", "mixed":"mixed", "ai-assisted":"mixed"}
-    kind = labels.get(verdict, "uncertain")
-    if not windows or any(str(w.get("confidence", "")).lower() != "high" for w in windows):
-        kind = "uncertain"
+    fraction = raw.get("fraction_ai")
+    if type(fraction) not in (int, float) or not 0 <= fraction <= 1:
+        raise Problem(502, "Pangram did not return an AI-written share.")
+    kind = "ai" if fraction > 0.30 else "human"
     shares = {}
     for field in ("ai", "ai_assisted", "human"):
         value = raw.get("fraction_" + field)
         if isinstance(value, (int, float)) and math.isfinite(value) and 0 <= value <= 1:
             shares[field] = round(value * 100)
-    return {"kind":kind, "shares":shares, "version":str(raw.get("version", "")),
+    return {"kind":kind, "fraction_ai":fraction, "shares":shares, "version":str(raw.get("version", "")), "verdict":str(raw.get("prediction_short", "")),
             "headline":str(raw.get("headline", "")), "prediction":str(raw.get("prediction", ""))}
 
-def scan(text, key):
+def reserve_scan(db, client):
+    # Bound paid, uncached submissions from the public demo on each warm instance.
+    now = int(time.time())
+    db.execute("BEGIN IMMEDIATE")
+    db.execute("DELETE FROM usage WHERE created < ?", (now - 3600,))
+    count, recent = db.execute(
+        "SELECT count(*), count(CASE WHEN client=? AND created>? THEN 1 END) FROM usage",
+        (hashlib.sha256(client.encode()).hexdigest(), now - 300),
+    ).fetchone()
+    if count >= 24 or recent >= 4:
+        raise Problem(429, "Live scan limit reached. Try again later.")
+    db.execute("INSERT INTO usage VALUES (?, ?)", (hashlib.sha256(client.encode()).hexdigest(), now))
+    db.commit()
+
+def scan_digest(text):
+    return hashlib.sha256(("default\x00" + text.strip()).encode()).hexdigest()
+
+def scan(text, key, client=None):
     if not isinstance(text, str) or len(text) > MAX_CHARS:
         raise Problem(400, "Use up to 24,000 characters.")
     text = text.strip()
@@ -105,14 +129,16 @@ def scan(text, key):
         raise Problem(422, "Pangram needs at least 50 words of prose.")
     if not key:
         raise Problem(503, "Add PANGRAM_API_KEY to .env and save, then scan again.")
-    digest = hashlib.sha256(("default\x00" + text).encode()).hexdigest()
+    digest = scan_digest(text)
     # Keep pending task IDs across timeouts so a retry polls the already-paid scan.
     with LOCKS[int(digest[:2], 16) % len(LOCKS)], sqlite3.connect(DATA / "scans.db") as db:
         row = db.execute("SELECT task, result FROM scans WHERE digest=?", (digest,)).fetchone()
-        if row and row[1]:
+        if row and row[1] and "fraction_ai" in json.loads(row[1]):
             return json.loads(row[1])
         task = row[0] if row else None
         if not task:
+            if client:
+                reserve_scan(db, client)
             obj = provider(key, "/task", {"text":text, "model":"default", "public_dashboard_link":False})
             task = obj.get("task_id")
             if not isinstance(task, str) or not task:
@@ -134,12 +160,7 @@ def scan(text, key):
             time.sleep(1)
         raise Problem(504, "Pangram is still analyzing. Retry to resume the same scan.")
 
-def original_text(post_id):
-    # Only curator-selected, public LinkedIn pages can be retrieved.
-    cards = json.loads((PUBLIC / "linkedin.json").read_text())
-    post = next((p for p in cards if p["id"] == post_id), None)
-    if post is None:
-        raise Problem(404, "This original is not in the feed.")
+def local_caption(post):
     if post["featured"]:
         return post["body"]
     digest = post["sourceHash"]
@@ -148,6 +169,30 @@ def original_text(post_id):
         saved = cached.read_text()
         if hashlib.sha256(saved.encode()).hexdigest() == digest:
             return saved
+    return None
+
+def feed():
+    cards = json.loads((PUBLIC / "linkedin.json").read_text())
+    with sqlite3.connect(DATA / "scans.db") as db:
+        for post in cards:
+            caption = local_caption(post)
+            if caption:
+                row = db.execute("SELECT result FROM scans WHERE digest=?", (scan_digest(caption),)).fetchone()
+                if row and row[0]:
+                    post["result"] = json.loads(row[0])
+    return cards
+
+def original_text(post_id):
+    # Only curator-selected, public LinkedIn pages can be retrieved.
+    cards = json.loads((PUBLIC / "linkedin.json").read_text())
+    post = next((p for p in cards if p["id"] == post_id), None)
+    if post is None:
+        raise Problem(404, "This original is not in the feed.")
+    saved = local_caption(post)
+    if saved:
+        return saved
+    digest = post["sourceHash"]
+    cached = DATA / ("original-" + digest)
     try:
         with urlopen(post["url"], timeout=8) as response:
             page = response.read(3000000).decode()
@@ -182,6 +227,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def local_request(self):
         origin = self.headers.get("Origin")
+        if HOSTED:
+            return not origin or origin == "https://" + self.headers.get("Host", "")
         hosts = {f"localhost:{PORT}", f"127.0.0.1:{PORT}"}
         return self.headers.get("Host") in hosts and (not origin or origin in {"http://" + h for h in hosts})
 
@@ -191,6 +238,10 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/api/status":
             return self.reply(200, connection(api_key()))
+        if path == "/api/feed":
+            return self.reply(200, feed())
+        if path == "/api/bridge" and not HOSTED:
+            return self.reply(200, (PUBLIC / "bridge.html").read_bytes(), "text/html")
         asset = PUBLIC / ("index.html" if path == "/" else path.lstrip("/"))
         if asset.parent != PUBLIC or not asset.is_file() or asset.suffix not in STATIC_TYPES:
             return self.reply(404, {"error":"Not found."})
@@ -199,7 +250,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self.local_request():
             return self.reply(403, {"error":"Use the local app address."})
-        if self.path != "/api/analyze":
+        if urlsplit(self.path).path == "/api/linkedin" and not HOSTED:
+            if self.headers.get_content_type() != "application/json":
+                return self.reply(415, {"error":"Send JSON."})
+            return self.sync_linkedin()
+        if urlsplit(self.path).path != "/api/analyze":
             return self.reply(404, {"error":"Not found."})
         try:
             if self.headers.get_content_type() != "application/json":
@@ -210,8 +265,13 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(size))
             if not isinstance(payload, dict):
                 raise ValueError
+            if "post_id" in payload:
+                cached = next((p.get("result") for p in feed() if p["id"] == payload["post_id"]), None)
+                if cached:
+                    return self.reply(200, cached)
             text = original_text(payload["post_id"]) if "post_id" in payload else payload.get("text")
-            self.reply(200, scan(text, api_key()))
+            client = (self.headers.get("X-Vercel-Forwarded-For") or self.headers.get("X-Forwarded-For") or "public").split(",")[0] if HOSTED else None
+            self.reply(200, scan(text, api_key(), client))
         except Problem as exc:
             self.reply(exc.status, {"error":exc.message})
         except (ValueError, UnicodeError):
@@ -219,10 +279,33 @@ class Handler(BaseHTTPRequestHandler):
         except sqlite3.Error:
             self.reply(500, {"error":"Could not save the local scan. Check available disk space."})
 
-if __name__ == "__main__":
+    def sync_linkedin(self):
+        python = DATA / "linkedin-env/bin/python"
+        if not python.is_file():
+            return self.reply(503, {"error":"Install the local LinkedIn MCP using the steps in the README."})
+        if not SYNC_LOCK.acquire(blocking=False):
+            return self.reply(409, {"error":"A LinkedIn sync is already running."})
+        try:
+            proc = subprocess.run([str(python), str(ROOT / "linkedin_bridge.py")], capture_output=True, timeout=125)
+            if proc.returncode:
+                raise ValueError
+            result = json.loads(proc.stdout)
+            return self.reply(200 if "posts" in result else 409, result)
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            return self.reply(503, {"error":"LinkedIn MCP did not finish. Check the local LinkedIn sign-in and retry."})
+        finally:
+            SYNC_LOCK.release()
+
+SYNC_LOCK = threading.Lock()
+
+def initialize():
     DATA.mkdir(mode=0o700, exist_ok=True)
     with sqlite3.connect(DATA / "scans.db") as db:
         db.execute("CREATE TABLE IF NOT EXISTS scans (digest TEXT PRIMARY KEY, task TEXT, result TEXT)")
+        db.execute("CREATE TABLE IF NOT EXISTS usage (client TEXT, created INTEGER)")
+
+if __name__ == "__main__":
+    initialize()
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"Offscript is ready at http://127.0.0.1:{PORT}", flush=True)
     server.serve_forever()

@@ -22,19 +22,17 @@
     "shortPreview": false,
     "avatar": "https://media.licdn.com/dms/image/v2/D4E03AQEjuVfJOemZ5Q/profile-displayphoto-scale_200_200/B4EZmdKVNYIMAc-/0/1759278355988?e=2147483647&v=beta&t=hfEjxPR5xw_E8oknJwqigOdDH8C36hGrIVt60bcmAzY",
     "result": {
-      "kind": "uncertain",
-      "version": "4.1",
-      "headline": "Possibly AI",
-      "prediction": "This text is too short to classify with certainty, but we believe it may be AI generated.",
-      "source": "Pangram dashboard",
+      "kind": "ai",
+      "fraction_ai": 0.6339061260223389,
       "shares": {
         "ai": 63,
+        "ai_assisted": 0,
         "human": 37
       },
-      "range": [
-        40,
-        75
-      ]
+      "version": "4.1",
+      "verdict": "Mixed",
+      "headline": "AI Detected",
+      "prediction": "We believe that this text is a mix of AI and human-written content."
     }
   },
   {
@@ -60,11 +58,16 @@
     "shortPreview": true,
     "result": {
       "kind": "human",
+      "fraction_ai": 8.138144326453548e-17,
+      "shares": {
+        "ai": 0,
+        "ai_assisted": 0,
+        "human": 100
+      },
       "version": "4.1",
+      "verdict": "Human",
       "headline": "Human Written",
-      "prediction": "We believe that this entire text is human-written.",
-      "source": "Pangram dashboard",
-      "shares": {}
+      "prediction": "We believe that this entire text is human-written."
     }
   },
   {
@@ -91,12 +94,17 @@
     "shortPreview": true,
     "avatar": "https://media.licdn.com/dms/image/v2/D4E0BAQFZYFefLBy3Kw/company-logo_100_100/B4EZk443nUHoAQ-/0/1757596056491/duolingo_logo?e=2147483647&v=beta&t=juoys8RiExii33VafdCLO2GAtDmAmKSSYvy2bi2WeJs",
     "result": {
-      "kind": "uncertain",
+      "kind": "human",
+      "fraction_ai": 0.0,
+      "shares": {
+        "ai": 0,
+        "ai_assisted": 0,
+        "human": 100
+      },
       "version": "4.1",
-      "headline": "Possibly human",
-      "prediction": "This text is too short to classify with certainty, but we believe it may be human written.",
-      "source": "Pangram dashboard",
-      "shares": {}
+      "verdict": "Human",
+      "headline": "Human Written",
+      "prediction": "We believe that this entire text is human-written."
     }
   },
   {
@@ -123,11 +131,16 @@
     "avatar": "https://media.licdn.com/dms/image/v2/C4E03AQFKMlvwPhqm5Q/profile-displayphoto-shrink_200_200/profile-displayphoto-shrink_200_200/0/1516350216557?e=2147483647&v=beta&t=azljBnBlI4lqIgJS3__Erlw8XVwsaiFlCUDaE_n1Zd0",
     "result": {
       "kind": "human",
+      "fraction_ai": 7.6823511710419555e-31,
+      "shares": {
+        "ai": 0,
+        "ai_assisted": 0,
+        "human": 100
+      },
       "version": "4.1",
+      "verdict": "Human",
       "headline": "Human Written",
-      "prediction": "We believe that this entire text is human-written.",
-      "source": "Pangram dashboard",
-      "shares": {}
+      "prediction": "We believe that this entire text is human-written."
     }
   },
   {
@@ -156,12 +169,17 @@
     "shortPreview": true,
     "avatar": "https://media.licdn.com/dms/image/v2/D560BAQFcJ5JtkH93Pw/company-logo_100_100/company-logo_100_100/0/1724885656269/nvidia_data_center_logo?e=2147483647&v=beta&t=y_mKjjQDI_4iqkYM4j_6hMYeUJWqYAod7cWA5ccqSWA",
     "result": {
-      "kind": "uncertain",
+      "kind": "ai",
+      "fraction_ai": 0.6404040455818176,
+      "shares": {
+        "ai": 64,
+        "ai_assisted": 0,
+        "human": 36
+      },
       "version": "4.1",
-      "headline": "Possibly AI",
-      "prediction": "This text is too short to classify with certainty, but we believe it may be AI generated.",
-      "source": "Pangram dashboard",
-      "shares": {}
+      "verdict": "Mixed",
+      "headline": "AI Detected",
+      "prediction": "We believe that this text is a mix of AI and human-written content."
     }
   },
   {
@@ -213,12 +231,17 @@
     "shortPreview": true,
     "avatar": "https://media.licdn.com/dms/image/v2/D560BAQGmu2TBkgzjiA/company-logo_100_100/company-logo_100_100/0/1699474491946/the_cyber_security_hub_logo?e=2147483647&v=beta&t=Jyo5IJLFhwRn5rD71wlzDhvO3S6waierlZgNHgt45j4",
     "result": {
-      "kind": "mixed",
+      "kind": "ai",
+      "fraction_ai": 0.838746964931488,
+      "shares": {
+        "ai": 84,
+        "ai_assisted": 0,
+        "human": 16
+      },
       "version": "4.1",
+      "verdict": "AI",
       "headline": "AI Detected",
-      "prediction": "We believe that this text is a mix of AI and human-written content.",
-      "source": "Pangram dashboard",
-      "shares": {}
+      "prediction": "We believe that this text is a mix of AI and human-written content."
     }
   },
   {
@@ -267,12 +290,17 @@
     "shortPreview": true,
     "avatar": "https://media.licdn.com/dms/image/v2/C4D0BAQGRBHWCcaAqGg/company-logo_100_100/company-logo_100_100/0/1630507197379/nasa_logo?e=2147483647&v=beta&t=fo-Q6QobUq8rf0LAPLMALv3sxvdNUSa2U_m8Vg8cYk8",
     "result": {
-      "kind": "uncertain",
+      "kind": "human",
+      "fraction_ai": 2.5958895416559596e-33,
+      "shares": {
+        "ai": 0,
+        "ai_assisted": 0,
+        "human": 100
+      },
       "version": "4.1",
-      "headline": "Possibly human",
-      "prediction": "This text is too short to classify with certainty, but we believe it may be human written.",
-      "source": "Pangram dashboard",
-      "shares": {}
+      "verdict": "Human",
+      "headline": "Human Written",
+      "prediction": "We believe that this entire text is human-written."
     }
   },
   {
@@ -299,11 +327,16 @@
     "avatar": "https://media.licdn.com/dms/image/v2/C4E03AQEuocCX-e5usg/profile-displayphoto-shrink_200_200/profile-displayphoto-shrink_200_200/0/1617400991127?e=2147483647&v=beta&t=7Ks861wfT5Cu4nsdcoF_cJutDX4TXxU-oHT_NeGUnU4",
     "result": {
       "kind": "human",
+      "fraction_ai": 9.460956489198474e-37,
+      "shares": {
+        "ai": 0,
+        "ai_assisted": 0,
+        "human": 100
+      },
       "version": "4.1",
+      "verdict": "Human",
       "headline": "Human Written",
-      "prediction": "We believe that this entire text is human-written.",
-      "source": "Pangram dashboard",
-      "shares": {}
+      "prediction": "We believe that this entire text is human-written."
     }
   }
 ]

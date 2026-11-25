@@ -1,0 +1,6 @@
+.local
+.env*
+.venv
+__pycache__
+.git
+linkedin_bridge.py

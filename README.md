@@ -1,23 +1,29 @@
 # Offscript
 
-A local LinkedIn-style feed featuring ten real public posts and their original photos. The first card is Jules Rumeau’s NASA Space Apps post. Each card links back to LinkedIn. Source counts are snapshots from November 24, 2026. The feed is curated and has no automatic LinkedIn timeline subscription.
+A LinkedIn feed you can switch between its original appearance and Pangram verdict stickers. The public collection includes ten real posts and their original media links. It starts with Jules Rumeau’s NASA Space Apps post. Eight captions have saved results from the live Pangram 4.1 API. Two are under the app’s 50-word minimum.
 
-## Start
+## Demo
 
-Requires Python 3.9 or later. On first setup, copy `.env.example` to `.env` and set `PANGRAM_API_KEY`. An exported environment variable also works.
+Open a sticker for the model’s underlying verdict. Offscript labels a scored post **AI SLOP** when Pangram's unrounded `fraction_ai` exceeds 0.30, and **HUMAN** at or below 0.30. This is a product rule. The percentage estimates the share of AI-generated text. **Hide AI** folds flagged cards. **Verdict stickers** toggles the overlay. To run a fresh scan, choose **Add your LinkedIn post**, paste at least 50 words, then choose **Scan with Pangram**.
+
+## Run locally
+
+Requires Python 3.9+. Copy `.env.example` to `.env` and set `PANGRAM_API_KEY`, or export it in the server's environment. Run `python3 server.py` and open <http://127.0.0.1:8787>. Results and resumable Pangram task IDs are cached in the local SQLite database. Browser-added posts and attachments stay in this browser. A scan sends the caption to Pangram.
+
+## Sync a personal LinkedIn feed
+
+With [uv](https://docs.astral.sh/uv/) and Chrome installed, run these commands in the project directory on your Mac.
 
 ```sh
-python3 server.py
+uv venv --python 3.12 .local/linkedin-env
+uv pip install --python .local/linkedin-env/bin/python mcp-server-linkedin==4.31.0
+.local/linkedin-env/bin/mcp-server-linkedin --login --no-auto-import --user-data-dir "$PWD/.local/linkedin-mcp/profile"
 ```
 
-Open <http://127.0.0.1:8787/>. Keep using the same browser and address for saved personal posts, photos and audio.
+Complete LinkedIn sign-in in the dedicated browser window. Start the local Offscript server and choose **Sync my LinkedIn**. On the hosted site, choose **Open local connector** and confirm the destination shown in the popup. Your local bridge calls the community [LinkedIn MCP server](https://github.com/stickerdaniel/linkedin-mcp-server) over stdio, checks session state, and calls `get_feed` for up to ten recent posts. It resolves available public captions and photos from LinkedIn. Excerpt-only cards link to their source and remain unscored. Subsequent syncs refresh matching cards. Your LinkedIn session stays on your machine. Imported cards stay in the browser that requested them.
 
-## Give the demo
+## Vercel
 
-Open **Scan details** on a card to see the actual Pangram verdict and its source. Eight full public captions were checked on the authenticated Pangram dashboard on November 24. Two captions were under the app's 50-word minimum. **Hide AI detections** folds flagged writing, including a mixed post when Pangram reports “AI Detected”. Low-confidence posts stay visible. **Review results** lists the feed.
+Import the GitHub repository, choose the Other framework preset and set `PANGRAM_API_KEY` as a server-only Production secret. The repository includes static assets and three Python functions. The public catalog ships with API-verified results for the curated posts. Fresh submissions call Pangram, with a temporary per-instance cache and rate limit. Local LinkedIn sessions are excluded from the deployment. The status endpoint checks API connectivity without displaying the account balance publicly.
 
-Choose **Add your LinkedIn post** to paste a new caption and optionally attach a photo, a voice note or actual impressions. **Scan with Pangram** submits the text to the official async API, which requires an available API balance. The status control checks the balance. A zero-balance response on a personal post offers a copy button and a link to the official dashboard.
-
-## Data
-
-The public catalog contains source URLs, original LinkedIn-hosted media URLs, counts, short previews and the verified web results. Scans use the full caption. The backend resolves only curated URLs and checks the caption hash against the snapshot. Scan summaries and cached source text live locally in the ignored `.local/` directory. The browser loads photos from LinkedIn’s CDN. Newly added posts, uploaded photos, and voice notes remain in this browser’s IndexedDB.
+To attach a domain, open the project's Settings → Domains, add the hostname and copy the DNS records displayed by Vercel to your DNS provider.

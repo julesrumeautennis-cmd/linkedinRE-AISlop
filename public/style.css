@@ -42,3 +42,15 @@ form,.field{display:grid;gap:10px}.field{gap:4px}.field span,summary,.checkline{
 @media(max-width:710px){.shell{width:calc(100% - 24px)}.workgrid{grid-template-columns:1fr;gap:10px;padding-top:10px}aside{position:static;grid-row:1}.scanpanel{display:grid;grid-template-columns:1fr auto;align-items:center;padding:9px 12px}.panel h2{font-size:16px}.scanpanel .bigstat,.scanpanel .meter,.scanpanel .stat-label,.scanpanel .legend{display:none}.scanpanel .dark-btn{width:auto;margin:0;padding:5px 12px}.scanpanel .feedback{grid-column:1/-1}.top{height:51px;gap:6px}.feed-brand{font-size:19px;gap:6px}.in-mark{width:29px;height:29px;font-size:25px}.demo-name{display:none}nav{margin-left:auto;gap:0}.home-tab{display:none}nav button{font-size:12px}.api{margin-left:2px;font-size:11px;padding:4px 7px}.composer-strip{padding:9px 12px}.sectionhead{margin:10px 1px 8px}.card{padding:13px 13px 0}.photo-grid{margin-inline:-13px}.folded{padding-bottom:13px}.avatar{width:38px;height:38px;flex-basis:38px}.byline strong{font-size:14px}#feed,.card{scroll-margin-top:60px}}
 @media(max-width:370px){nav button{font-size:0}nav button:after{content:'About';font-size:12px}.feed-brand{font-size:17px}.tag.featured{font-size:10px}}
 .report-row{width:100%;border:0;border-bottom:1px solid #ddd;padding:10px 0;text-align:left;color:var(--blue);font-size:14px;font-weight:600}.report-row:hover{text-decoration:underline}.report-short{padding:8px 0;margin:0}.launch-dashboard{display:inline-block;margin-left:12px}.card .post-body.clamp{white-space:normal}
+
+.verdict-controls{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 2px 12px;padding-top:9px;border-top:1px solid var(--border)}
+.mcp-link{border:0;padding:2px 0;color:var(--blue);font-weight:650;font-size:14px;text-align:left}
+.card-top .byline{flex:1}
+.verdict-sticker{flex:none;display:grid;gap:3px;text-align:center;align-content:center;justify-items:center;transform:rotate(-5deg);margin:2px 3px 3px 4px;padding:6px 12px 5px;border:2px solid currentColor;border-radius:3px;box-shadow:2px 2px 0 currentColor}
+.verdict-sticker.ai{color:#842513;background:#ffcf9c}
+.verdict-sticker.human{color:#1f5c40;background:#dbf4c8;transform:rotate(-3deg)}
+.verdict-sticker strong{font:900 clamp(19px,2.8vw,31px)/.94 system-ui,sans-serif;letter-spacing:-.065em}
+.verdict-sticker small{font:700 10px/1.1 'DM Sans',sans-serif;color:inherit;white-space:nowrap;letter-spacing:.045em}
+.verdict-sticker:focus-visible{outline-offset:5px}
+@media(max-width:480px){.verdict-sticker{padding:5px 8px}.card-top{gap:8px}.verdict-controls .toggle{font-size:12px}}
+.bridge-page{max-width:430px;margin:12vh auto;padding:24px}.bridge-page h1{font-size:26px}.bridge-page p{margin:16px 0;overflow-wrap:anywhere}

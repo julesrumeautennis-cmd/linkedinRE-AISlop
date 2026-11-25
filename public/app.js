@@ -16,9 +16,8 @@ async function localData(method,value){
 const posts=[];
 const expanded=new Set(), unfolded=new Set(), openVoices=new Set(), disclosures=new Set(), busy=new Set();
 const blobUrls=new Map();
-let filter=false, batch=false, state={state:'checking'}, timer, recordingCleanup=null;
+let stickers=true, filter=false, batch=false, state={state:'checking'}, timer, recordingCleanup=null;
 const modal=$('#modal');
-const labels={ai:'Likely AI',human:'Likely human',mixed:'Mixed authorship',uncertain:'Uncertain'};
 function element(tag, cls='', content=''){
   const node=document.createElement(tag);
   if(cls)node.className=cls;
@@ -50,7 +49,7 @@ function setState(next){
 }
 async function checkStatus(){
   try{const r=await fetch('/api/status');if(!r.ok)throw Error();setState(await r.json());}
-  catch{setState({state:'error',message:'Could not reach the local server.'});}
+  catch{setState({state:'error',message:'Could not reach Offscript.'});}
 }
 $('#api-status').onclick=()=>{
   const body=dialog('Pangram connection');
@@ -64,27 +63,27 @@ $('#method').onclick=()=>{
   const body=dialog('How Offscript works');
   for(const [head,copy] of [
     ['Check the writing','Pangram analyzes the full original caption when you click Scan. Posts under 50 words remain unclassified.'],
-    ['Filter the feed','Hide AI detections folds posts flagged as AI by Pangram, including mixed posts with a confirmed AI detection. Uncertain results stay visible. You can reopen every post.'],
+    ['Filter the feed','Offscript labels a post AI when Pangram estimates that more than 30% of its text was AI-generated. Other scored posts get the HUMAN sticker. Hide AI folds the flagged posts. Turn off Verdict stickers for the original view.'],
     ['Read the source','Each public post links to its original on LinkedIn. Reactions and comments are a snapshot of the public counts at import.'],
     ['Add a post','Save your own post, photo, original audio, and impression count to this browser. A scan sends the text to Pangram.']
   ])body.append(element('h3','',head),element('p','',copy));
 };
 
-function scanText(p){return p.linkedin?p.sourceHash:p.body;}
 function longEnough(p){return (p.linkedin?p.wordCount:p.body.trim().split(/\s+/).length)>=50;}
-function eligible(p){
-  if(!p.result)return Boolean(p.disclosed);
-  return p.result.kind==='ai'||(p.result.kind==='mixed'&&p.result.headline==='AI Detected');
+function kind(p){
+  const fraction=p.result?.fraction_ai;
+  if(typeof fraction==='number' && fraction>=0 && fraction<=1)return fraction>0.30?'ai':'human';
+  return null;
 }
-function verdict(p){
-  const r=p.result;
-  if(r.source==='Pangram dashboard'){
-    if(r.kind==='uncertain')return r.headline;
-    if(r.kind==='mixed')return 'AI detected · Mixed';
-  }
-  return labels[r.kind];
+function eligible(p){return kind(p)==='ai';}
+function verdict(p){return ({ai:'AI',human:'Human'})[kind(p)]||'Unscored';}
+function createSticker(p){
+  const ai=eligible(p), percentage=new Intl.NumberFormat('en-US',{style:'percent',maximumFractionDigits:2}).format(p.result.fraction_ai);
+  const stamp=button('','verdict-sticker '+kind(p),()=>detailsFor(p));
+  stamp.append(element('strong','',ai?'AI SLOP':'HUMAN'),element('small','',percentage+' AI-written'));
+  stamp.setAttribute('aria-label',verdict(p)+' verdict, '+percentage+' estimated AI-written. View scan details.');
+  return stamp;
 }
-function tagFor(p){if(p.result)return [p.result.kind,verdict(p)];if(p.disclosed&&(!p.own||disclosures.has(p.id)))return ['disclosed','Disclosed AI'];if(p.archive)return ['archive','Archive'];return ['','Unscanned'];}
 function avatar(p){
   const a=element('span','avatar '+p.theme,p.mark);a.setAttribute('aria-hidden','true');
   if(p.avatar){const img=element('img');img.alt='';img.src=p.avatar;img.referrerPolicy='no-referrer';img.onerror=()=>img.remove();a.append(img);}
@@ -148,19 +147,19 @@ function detailsFor(p){
   const entries=Object.entries(p.result.shares||{}), names={ai:'AI-written',ai_assisted:'AI-assisted',human:'Human-written'};
   if(entries.length){body.append(element('h3','','Share of the text'));for(const [k,v] of entries)body.append(element('p','',names[k]+' · '+v+'%'));}
   if(p.result.range)body.append(element('p','','Pangram’s estimated range is '+p.result.range.join('–')+'% AI-written text.'));
-  body.append(element('small','',(p.result.source||'Pangram API')+' · Model '+p.result.version+(p.result.source?' · November 24, 2026':'')));
+  body.append(element('p','','Offscript applies the AI sticker above 30% AI-written text. The percentage estimates the share of the caption.'));
+  body.append(element('small','','Pangram API · Model '+p.result.version+(p.result.verdict?' · '+p.result.verdict:'')));
 }
 function card(p){
   const item=element('article','card');item.id='post-'+p.id;
   const top=element('div','card-top'), by=element('div','byline');
   by.append(element('strong','',p.name),element('p','',p.meta));top.append(avatar(p),by);item.append(top);
-  const [type,label]=tagFor(p), folded=filter&&eligible(p)&&!unfolded.has(p.id);
+  const folded=filter&&eligible(p)&&!unfolded.has(p.id);
   if(folded){
-    item.classList.add('folded');by.lastChild.textContent=(p.disclosed&&!p.result?'Author-disclosed AI':label)+' · Folded';
+    item.classList.add('folded');by.lastChild.textContent='Hidden by your AI filter';
     top.append(button('Show post','linkish',()=>{unfolded.add(p.id);repaintCard(p);}));return item;
   }
-  if(p.result||p.disclosed)top.append(element('span','tag '+type,label));
-  else if(p.featured)top.append(element('span','tag featured','Featured post'));
+  if(stickers&&kind(p))top.append(createSticker(p));
   if(p.own && p.impressions){
     const metric=element('div','reach');metric.append(element('strong','',Number(p.impressions).toLocaleString('en-US')),element('span','','impressions · reported by author'));item.append(metric);
   }
@@ -174,7 +173,7 @@ function card(p){
     const quote=element('blockquote','disclosure','“I wrote this post with AI.”');quote.append(element('cite','','Author disclosure'));item.append(quote);
   }
   if(p.photos?.length||p.photoFile)item.append(gallery(p));
-  if(p.linkedin){
+  if(p.linkedin && Number.isFinite(p.reactions) && Number.isFinite(p.comments)){
     const social=element('div','social');
     const symbols=element('span','reaction-icons');symbols.setAttribute('aria-hidden','true');
     symbols.append(element('i','','👍'),element('i','','♥'),element('i','','👏'));
@@ -183,7 +182,7 @@ function card(p){
   const actions=element('div','actions');
   const scan=button(p.result?'Scan details':busy.has(p.id)?'Scanning…':'Scan with Pangram','action',()=>p.result?detailsFor(p):runSingle(p));
   scan.prepend(element('span','scan-icon'));scan.disabled=busy.has(p.id)||(!p.result&&batch);
-  if(p.linkedin&&!longEnough(p)){actions.append(element('small','short-post','Under 50 words · unscored'));}else actions.append(scan);
+  if(p.linkedin&&!longEnough(p)){actions.append(element('small','short-post',p.excerptOnly?'Preview only · unscored':'Under 50 words · unscored'));}else actions.append(scan);
   if(p.own&&p.disclosed)actions.append(button(disclosures.has(p.id)?'Hide disclosure':'Reveal who wrote it','action',()=>{
     if(disclosures.has(p.id))disclosures.delete(p.id);else disclosures.add(p.id);repaintCard(p);
   }));
@@ -202,15 +201,16 @@ function card(p){
   return item;
 }
 function render(){
+  $('#stream-label').textContent=posts.some(p=>p.mcp)?'Your feed':'Viral posts';
   $('#cards').replaceChildren(...posts.map(card));stats();
 }
 function stats(){
-  const done=posts.filter(p=>p.result).length;
+  const done=posts.filter(p=>kind(p)).length;
   $('#count').textContent=posts.length;$('#scanned').textContent=done;$('#scan-total').textContent='/ '+posts.length;
-  const totals={ai:0,human:0,mixed:0,unscanned:0};
-  for(const p of posts){const kind=p.result?.kind||'unscanned';totals[kind==='uncertain'?'mixed':kind]++;}
+  const totals={ai:0,human:0,unscanned:0};
+  for(const p of posts)totals[kind(p)||'unscanned']++;
   const meter=$('#meter'),legend=$('#legend');meter.replaceChildren();legend.replaceChildren();
-  for(const [key,name] of [['ai','Likely AI'],['human','Likely human'],['mixed','Mixed / uncertain'],['unscanned','Unscanned']]){
+  for(const [key,name] of [['ai','AI'],['human','Human'],['unscanned','Unscored']]){
     if(totals[key]){const part=element('i',key+'-color');part.style.flexGrow=totals[key];meter.append(part);}
     const row=element('div');row.append(element('i',key+'-color'),document.createTextNode(name),element('b','',String(totals[key])));legend.append(row);
   }
@@ -219,18 +219,18 @@ function stats(){
   scanAll.textContent=batch?'Scanning…':ready?'Scan the feed':'Review results';
   scanAll.disabled=batch||busy.size>0||(!ready&&!done);
   const note=$('#filter-note');note.hidden=!filter;
-  note.textContent='Posts marked AI Detected or disclosed as AI are folded. Uncertain results stay visible.';
+  note.textContent='Posts above 30% AI-written are folded.';
 }
+$('#stickers').onchange=e=>{stickers=e.target.checked;render();};
 $('#filter').onchange=e=>{filter=e.target.checked;unfolded.clear();render();};
 
 async function save(p){
-  const stored=p.own?p:{id:p.id,scannedText:scanText(p),result:p.result};
-  await localData('put',stored);
+  if(p.own||p.mcp)await localData('put',p);
 }
 async function scanPost(p){
   busy.add(p.id);repaintCard(p);stats();
   try{
-    const r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p.linkedin?{post_id:p.id}:{text:p.body})});
+    const r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p.linkedin&&!p.mcp?{post_id:p.id}:{text:p.body})});
     const data=await r.json();
     if(!r.ok){if(r.status===402)setState({state:'credits',message:data.error});throw Object.assign(new Error(data.error||'Scan failed. Try again.'),{status:r.status});}
     p.result=data;
@@ -348,7 +348,7 @@ function composer(){
 $('#add').onclick=composer;
 async function init(){
   try{
-    const response=await fetch('/linkedin.json');
+    const response=await fetch('/api/feed');
     if(!response.ok)throw Error();
     posts.push(...await response.json());
     const featured=posts.find(p=>p.featured);
@@ -357,9 +357,49 @@ async function init(){
   }catch{$('#cards').textContent='Could not load the feed. Refresh to try again.';return;}
   try{
     const stored=await localData('getAll');
-    for(const p of posts){const row=stored.find(x=>x.id===p.id);if(row?.scannedText===scanText(p)&&row?.result)p.result=row.result;}
-    posts.unshift(...stored.filter(p=>p.own).sort((a,b)=>b.created-a.created));
+    for(const p of stored){if(p.result&&!kind(p))delete p.result;}
+    posts.unshift(...stored.filter(p=>p.own||p.mcp).sort((a,b)=>b.created-a.created));
   }catch{toast('Browser storage is unavailable. Local posts need storage enabled.');}
   render();await checkStatus();
 }
 init();
+
+const localBridge='http://127.0.0.1:8787';
+let syncWindow=null;
+async function importFeed(items){
+  if(!Array.isArray(items)||!items.length)throw Error('LinkedIn returned no posts.');
+  const latest=[];
+  for(const card of items.slice(0,10)){
+    if(!card.mcp || !/^mcp-[a-z0-9]+$/.test(card.id) || !/^https:\/\/www\.linkedin\.com\/(posts|feed\/update)\//.test(card.url))continue;
+    const old=posts.find(p=>p.id===card.id);
+    if(old?.body===card.body&&old.result)card.result=old.result;
+    card.created=Date.now()-latest.length;
+    await save(card);latest.push(card);
+  }
+  const ids=new Set(latest.map(p=>p.id));
+  for(let i=posts.length-1;i>=0;i--)if(ids.has(posts[i].id))posts.splice(i,1);
+  posts.unshift(...latest);render();
+  toast(latest.length+' recent LinkedIn posts synced.');
+}
+window.addEventListener('message',async e=>{
+  if(e.origin!==localBridge||e.source!==syncWindow||e.data?.type!=='offscript-mcp')return;
+  syncWindow=null;
+  try{await importFeed(e.data.posts);}catch(e){showFailure(e.message);}
+});
+$('#sync').onclick=async e=>{
+  if(location.hostname!=='127.0.0.1' && location.hostname!=='localhost'){
+    const pane=dialog('Sync from your Mac');
+    pane.append(element('p','','Start the local Offscript server on your Mac, then open the connector to read up to 10 recent posts from your LinkedIn session.'));
+    pane.append(button('Open local connector','dark-btn',()=>{
+      syncWindow=window.open(localBridge+'/api/bridge?site='+encodeURIComponent(location.origin),'offscript-linkedin','popup,width=520,height=520');
+      if(syncWindow)modal.close();else toast('Allow pop-ups to open the local connector.');
+    }));return;
+  }
+  const control=e.currentTarget;control.disabled=true;control.textContent='Reading your feed…';
+  try{
+    const r=await fetch('/api/linkedin',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const data=await r.json();if(!r.ok)throw Error(data.error);
+    await importFeed(data.posts);
+  }catch(e){showFailure(e.message);}
+  finally{control.disabled=false;control.textContent='Sync my LinkedIn';}
+};
